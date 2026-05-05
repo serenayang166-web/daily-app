@@ -83,7 +83,14 @@ export async function POST(request: Request) {
 
   if (!response.ok) {
     const detail = await response.text();
-    return NextResponse.json({ error: 'Claude API request failed.', detail }, { status: response.status });
+    let readableDetail = detail;
+    try {
+      const parsed = JSON.parse(detail);
+      readableDetail = parsed?.error?.message || parsed?.message || detail;
+    } catch {
+      readableDetail = detail;
+    }
+    return NextResponse.json({ error: 'Claude API request failed.', detail: readableDetail }, { status: response.status });
   }
 
   const result = await response.json();

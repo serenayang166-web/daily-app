@@ -562,7 +562,7 @@ function CreateWizard({ onClose, onDone }) {
         }),
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || '生成失败');
+      if (!response.ok) throw new Error(payload.detail || payload.error || '生成失败');
       setGenerated(payload.plan);
     } catch (err) {
       const message = err instanceof Error ? err.message : '生成失败';
@@ -1701,7 +1701,7 @@ function AppInner() {
         }),
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || 'AI 重新调整失败');
+      if (!response.ok) throw new Error(payload.detail || payload.error || 'AI 重新调整失败');
       setGoals(gs => gs.map(g => g.id !== goal.id ? g : {
         ...g,
         days: payload.plan.days.map((day, index) => ({
