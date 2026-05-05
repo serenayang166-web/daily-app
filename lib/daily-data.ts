@@ -1,5 +1,6 @@
 import { BookOpen, Dumbbell, Repeat, Target, TrendingUp, type LucideIcon } from 'lucide-react';
 import { isSupabaseConfigured, supabase } from './supabase';
+import type { GeneratedPlan } from './plan-schema';
 
 type GoalRow = {
   id: string;
@@ -171,16 +172,122 @@ export async function updateHabitReminder(habitId: string, patch: { reminderTime
   if (error) throw error;
 }
 
-export function serializeGoalForInsert(goal: any, userId: string) {
-  return {
+export async function createGoalWithTasks(input: {
+  title: string;
+  description?: string;
+  endDate: string;
+  dailyTime: number;
+  plan: GeneratedPlan;
+}) {
+  if (!supabase) return null;
+
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError) throw userError;
+  const userId = userData.user?.id;
+  if (!userId) throw new Error('Please sign in before saving a plan.');
+
+  const start = new Date();
+  const end = new Date(`${input.endDate}T00:00:00`);
+  const { data: goal, error: goalError } = await supabase
+    .from('goals')
+    .insert({
+      user_id: userId,
+      title: input.title,
+      icon: 'Target',
+      description: input.description ?? input.plan.summary,
+      start_date: start.toISOString().slice(0, 10),
+      end_date: Number.isNaN(end.getTime()) ? input.endDate : end.toISOString().slice(0, 10),
+      total_days: input.plan.days.length,
+      current_day: 1,
+      daily_time: input.dailyTime,
+    })
+    .select()
+    .single();
+  if (goalError) throw goalError;
+
+  const tasks = input.plan.days.map((day, index) => ({
+    goal_id: goal.id,
     user_id: userId,
-    title: goal.title,
-    icon: iconName(goal.icon),
-    description: goal.description ?? '',
-    start_date: goal.startDate?.toISOString?.().slice(0, 10),
-    end_date: goal.endDate?.toISOString?.().slice(0, 10),
-    total_days: goal.totalDays,
-    current_day: goal.currentDay,
-    daily_time: goal.dailyTime,
-  };
+    day_number: day.day_number,
+    task_order: index,
+    date: new Date(start.getTime() + index * 86_400_000).toISOString().slice(0, 10),
+    title: day.title,
+    tasks: day.tasks,
+    estimated_time: day.estimated_time,
+    encouragement: day.encouragement,
+  }));
+
+  const { error: tasksError } = await supabase.from('goal_tasks').insert(tasks);
+  if (tasksError) throw tasksError;
+
+  return goal.id as string;
+}
+
+export async function createHabitWithCheckins(input: {
+  title: string;
+  endDate: string;
+  dailyTime: number;
+  plan: GeneratedPlan;
+}) {
+  if (!supabase) return null;
+
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError) throw userError;
+  const userId = userData.user?.id;
+  if (!userId) throw new Error('Please sign in before saving a plan.');
+
+  const start = new Date();
+  const { data: habit, error: habitError } = await supabase
+    .from('habits')
+    .insert({
+      user_id: userId,
+      title: input.title,
+      icon: 'Repeat',
+      start_date: start.toISOString().slice(0, 10),
+      end_date: input.endDate,
+      current_day: 1,
+      streak: 0,
+      reminder_time: '20:00',
+      reminder_enabled: true,
+    })
+    .select()
+    .single();
+  if (habitError) throw habitError;
+
+  const checkins = input.plan.days.map((day, index) => ({
+    habit_id: habit.id,
+    user_id: userId,
+    day_number: day.day_number,
+    date: new Date(start.getTime() + index * 86_400_000).toISOString().slice(0, 10),
+    title: `${day.title}: ${day.tasks.join('；')}`,
+  }));
+
+  const { error: checkinsError } = await supabase.from('habit_checkins').insert(checkins);
+  if (checkinsError) throw checkinsError;
+
+  return habit.id as string;
+}
+
+export async function updateGoal(goalId: string, patch: { title?: string; description?: string }) {
+  if (!supabase) return;
+  const { error } = await supabase.from('goals').update(patch).eq('id', goalId);
+  if (error) throw error;
+}
+
+export async function deleteGoal(goalId: string) {
+  if (!supabase) return;
+  const { error } = await supabase.from('goals').delete().eq('id', goalId);
+  if (error) throw error;
+}
+
+export async function updateHabit(habitId: string, patch: { title?: string }) {
+  if (!supabase) return;
+  const { error } = await supabase.from('habits').update(patch).eq('id', habitId);
+  if (error) throw error;
+}
+
+export async function deleteHabit(habitId: string) {
+  if (!supabase) return;
+  const { error } = await supabase.from('habits').delete().eq('id', habitId);
+  if (error) throw error;
 }

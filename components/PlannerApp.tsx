@@ -9,7 +9,13 @@ import {
 } from 'lucide-react';
 import {
   loadDailyData,
+  createGoalWithTasks,
+  createHabitWithCheckins,
+  deleteGoal,
+  deleteHabit,
   updateGoalTaskCompletion,
+  updateGoal,
+  updateHabit,
   updateHabitCheckinCompletion,
   updateHabitReminder,
 } from '@/lib/daily-data';
@@ -784,7 +790,7 @@ function CreateWizard({ onClose, onDone }) {
               <RotateCw className="w-4 h-4" /> 重新生成
             </button>
             <button
-              onClick={() => onDone({ kind, ...data })}
+              onClick={() => onDone({ kind, ...data, generated })}
               className="kk-brand text-white rounded-2xl py-4 text-[14px] font-semibold active:scale-[0.98] transition shadow-[0_8px_20px_rgba(123,97,255,0.25)]" style={{ backgroundColor: '#7B61FF' }}
             >
               确认创建 ✨
@@ -837,8 +843,10 @@ function WizardStep({
 // ═══════════════════════════════════════════════════════════════════
 // Goal Detail
 // ═══════════════════════════════════════════════════════════════════
-function GoalDetail({ goal, onBack, onAdjust, toggleGoalTask }) {
+function GoalDetail({ goal, onBack, onAdjust, onSave, onDelete, toggleGoalTask }) {
   const [showFuture, setShowFuture] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({ title: goal.title, description: goal.description || '' });
   const remaining = goal.totalDays - goal.currentDay + 1;
   const completed = goal.days.filter(d => d.is_completed).length;
   const pct = Math.round((completed / goal.totalDays) * 100);
@@ -854,9 +862,19 @@ function GoalDetail({ goal, onBack, onAdjust, toggleGoalTask }) {
       {/* Hero */}
       <div className="kk-brand-grad text-white px-5 pt-14 pb-7 relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #7B61FF 0%, #9D85FF 100%)' }}>
         <div className="absolute -right-10 -top-10 w-48 h-48 rounded-full bg-white opacity-10 blur-2xl" />
-        <button onClick={onBack} className="w-10 h-10 rounded-full bg-white/15 backdrop-blur flex items-center justify-center mb-7 relative text-white">
-          <ArrowLeft className="w-4 h-4" />
-        </button>
+        <div className="flex items-center justify-between mb-7 relative">
+          <button onClick={onBack} className="w-10 h-10 rounded-full bg-white/15 backdrop-blur flex items-center justify-center text-white">
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <div className="flex gap-2">
+            <button onClick={() => setEditing(true)} className="w-10 h-10 rounded-full bg-white/15 backdrop-blur flex items-center justify-center text-white">
+              <Pencil className="w-4 h-4" />
+            </button>
+            <button onClick={() => onDelete(goal.id)} className="w-10 h-10 rounded-full bg-white/15 backdrop-blur flex items-center justify-center text-white">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
         <div className="relative">
           <div className="inline-flex items-center gap-1 px-2.5 py-1 bg-white/15 backdrop-blur rounded-full text-[11px] font-semibold mb-3">
             <Target className="w-3 h-3" /> 倒数日目标
@@ -879,6 +897,40 @@ function GoalDetail({ goal, onBack, onAdjust, toggleGoalTask }) {
           <div className="text-[12px] text-white/70">截止 {fmtDate(goal.endDate)}</div>
         </div>
       </div>
+
+      {editing && (
+        <div className="fixed inset-0 bg-black/30 z-[120] flex items-end justify-center">
+          <div className="bg-white w-full max-w-[440px] rounded-t-3xl p-5 animate-slide-up">
+            <div className="flex items-center justify-between mb-4">
+              <div className="font-bold text-[18px] text-[#111827]">编辑目标</div>
+              <button onClick={() => setEditing(false)} className="w-9 h-9 rounded-full bg-[#F3F4F6] flex items-center justify-center">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <input
+              value={draft.title}
+              onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+              className="w-full bg-white border border-[#E5E7EB] rounded-2xl px-4 py-3 mb-3 text-[16px] focus:outline-none focus:kk-border-brand"
+            />
+            <textarea
+              value={draft.description}
+              onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+              rows={3}
+              className="w-full bg-white border border-[#E5E7EB] rounded-2xl px-4 py-3 mb-4 text-[16px] focus:outline-none focus:kk-border-brand resize-none"
+            />
+            <button
+              onClick={() => {
+                onSave(goal.id, draft);
+                setEditing(false);
+              }}
+              className="w-full kk-brand text-white rounded-2xl py-4 font-semibold"
+              style={{ backgroundColor: '#7B61FF' }}
+            >
+              保存修改
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Behind warning */}
       {isBehind && (
@@ -1320,7 +1372,10 @@ function CalendarPage({ goals, habits }) {
 // ═══════════════════════════════════════════════════════════════════
 // Profile + Reminders
 // ═══════════════════════════════════════════════════════════════════
-function Profile({ onLogout, goals, habits, onNavReminders }) {
+function Profile({ onLogout, goals, habits, onSaveHabit, onDeleteHabit, onNavReminders }) {
+  const [editingHabit, setEditingHabit] = useState(null);
+  const [habitTitle, setHabitTitle] = useState('');
+
   return (
     <div className="px-5 pt-14 pb-32">
       <h1 className="text-[28px] font-bold text-[#111827] tracking-tight mb-6">个人</h1>
@@ -1350,6 +1405,38 @@ function Profile({ onLogout, goals, habits, onNavReminders }) {
         </div>
       </div>
 
+      <div className="text-[11px] uppercase tracking-[0.1em] text-[#6B7280] font-bold mb-3">我的习惯</div>
+      <div className="space-y-2 mb-5">
+        {habits.map((habit) => {
+          const Icon = habit.icon;
+          return (
+            <Card key={habit.id} className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl kk-brand-soft flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#F3F0FF' }}>
+                  <Icon className="w-4 h-4 kk-text-brand" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-[14px] text-[#111827] truncate">{habit.title}</div>
+                  <div className="text-[11px] text-[#6B7280] mt-0.5">Day {habit.currentDay} · streak {habit.streak}</div>
+                </div>
+                <button
+                  onClick={() => {
+                    setEditingHabit(habit);
+                    setHabitTitle(habit.title);
+                  }}
+                  className="w-9 h-9 rounded-full bg-[#F3F4F6] flex items-center justify-center"
+                >
+                  <Pencil className="w-4 h-4 text-[#6B7280]" />
+                </button>
+                <button onClick={() => onDeleteHabit(habit.id)} className="w-9 h-9 rounded-full bg-[#FEE2E2] flex items-center justify-center">
+                  <X className="w-4 h-4 kk-text-danger" />
+                </button>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+
       <div className="space-y-2">
         {[
           { icon: Bell, label: '提醒设置', sub: '每日 · 守护 · AI 落后预警', onClick: onNavReminders },
@@ -1376,6 +1463,34 @@ function Profile({ onLogout, goals, habits, onNavReminders }) {
           退出登录
         </button>
       </div>
+
+      {editingHabit && (
+        <div className="fixed inset-0 bg-black/30 z-[120] flex items-end justify-center">
+          <div className="bg-white w-full max-w-[440px] rounded-t-3xl p-5 animate-slide-up">
+            <div className="flex items-center justify-between mb-4">
+              <div className="font-bold text-[18px] text-[#111827]">编辑习惯</div>
+              <button onClick={() => setEditingHabit(null)} className="w-9 h-9 rounded-full bg-[#F3F4F6] flex items-center justify-center">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <input
+              value={habitTitle}
+              onChange={(e) => setHabitTitle(e.target.value)}
+              className="w-full bg-white border border-[#E5E7EB] rounded-2xl px-4 py-3 mb-4 text-[16px] focus:outline-none focus:kk-border-brand"
+            />
+            <button
+              onClick={() => {
+                onSaveHabit(editingHabit.id, { title: habitTitle });
+                setEditingHabit(null);
+              }}
+              className="w-full kk-brand text-white rounded-2xl py-4 font-semibold"
+              style={{ backgroundColor: '#7B61FF' }}
+            >
+              保存修改
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1683,6 +1798,73 @@ function AppInner() {
     }
   };
 
+  const saveGeneratedPlan = async (payload) => {
+    if (!payload.generated) {
+      toast.push('请先生成计划', 'danger');
+      return;
+    }
+    try {
+      if (payload.kind === 'goal') {
+        await createGoalWithTasks({
+          title: payload.title,
+          description: payload.description,
+          endDate: payload.endDate,
+          dailyTime: payload.dailyTime,
+          plan: payload.generated,
+        });
+      } else {
+        await createHabitWithCheckins({
+          title: payload.title,
+          endDate: fmtFull(addDays(today, 21)),
+          dailyTime: payload.dailyTime,
+          plan: payload.generated,
+        });
+      }
+      await syncDailyData();
+      toast.push('已保存到你的计划');
+      setPage('dashboard');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '保存失败';
+      toast.push(message, 'danger');
+    }
+  };
+
+  const saveGoalEdit = async (goalId, patch) => {
+    setGoals(gs => gs.map(g => g.id === goalId ? { ...g, ...patch } : g));
+    if (dataSource === 'supabase') {
+      await updateGoal(goalId, patch);
+    }
+    toast.push('已保存修改');
+  };
+
+  const removeGoal = async (goalId) => {
+    if (!window.confirm('确定删除这个目标和它的所有每日任务吗？')) return;
+    setGoals(gs => gs.filter(g => g.id !== goalId));
+    if (dataSource === 'supabase') {
+      await deleteGoal(goalId);
+    }
+    setSelectedGoalId(null);
+    setPage('dashboard');
+    toast.push('目标已删除');
+  };
+
+  const saveHabitEdit = async (habitId, patch) => {
+    setHabits(hs => hs.map(h => h.id === habitId ? { ...h, ...patch } : h));
+    if (dataSource === 'supabase') {
+      await updateHabit(habitId, patch);
+    }
+    toast.push('习惯已更新');
+  };
+
+  const removeHabit = async (habitId) => {
+    if (!window.confirm('确定删除这个习惯和它的打卡记录吗？')) return;
+    setHabits(hs => hs.filter(h => h.id !== habitId));
+    if (dataSource === 'supabase') {
+      await deleteHabit(habitId);
+    }
+    toast.push('习惯已删除');
+  };
+
   const adjustGoalPlan = async (goal) => {
     toast.push('AI 重新调整中…', 'info');
     try {
@@ -1873,7 +2055,7 @@ function AppInner() {
         {page === 'create' && (
           <CreateWizard
             onClose={() => setPage('dashboard')}
-            onDone={() => { toast.push('已创建 ✨'); setPage('dashboard'); }}
+            onDone={saveGeneratedPlan}
           />
         )}
         {page === 'goalDetail' && selectedGoal && (
@@ -1881,6 +2063,8 @@ function AppInner() {
             goal={selectedGoal}
             onBack={() => setPage('dashboard')}
             onAdjust={() => adjustGoalPlan(selectedGoal)}
+            onSave={saveGoalEdit}
+            onDelete={removeGoal}
             toggleGoalTask={toggleGoalTask}
           />
         )}
@@ -1901,6 +2085,8 @@ function AppInner() {
               setDataSource('mock');
             }}
             goals={goals} habits={habits}
+            onSaveHabit={saveHabitEdit}
+            onDeleteHabit={removeHabit}
             onNavReminders={() => setPage('reminders')}
           />
         )}
