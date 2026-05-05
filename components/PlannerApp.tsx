@@ -7,6 +7,13 @@ import {
   Pencil, X, Loader2, RotateCw, MessageCircle, BookOpen, Dumbbell,
   TrendingUp, Bell, Settings, ArrowLeft, Smile, type LucideIcon
 } from 'lucide-react';
+import {
+  loadDailyData,
+  updateGoalTaskCompletion,
+  updateHabitCheckinCompletion,
+  updateHabitReminder,
+} from '@/lib/daily-data';
+import { signInWithPassword, signOut, signUpWithPassword } from '@/lib/supabase';
 
 // ═══════════════════════════════════════════════════════════════════
 // Mock data
@@ -226,6 +233,33 @@ function StepDots({ total, current }) {
 // Login
 // ═══════════════════════════════════════════════════════════════════
 function Login({ onLogin }) {
+  const [email, setEmail] = useState('serena@example.com');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<'sign-in' | 'sign-up'>('sign-in');
+  const toast = useToast();
+
+  const submit = async () => {
+    setLoading(true);
+    try {
+      const result = mode === 'sign-in'
+        ? await signInWithPassword(email, password)
+        : await signUpWithPassword(email, password);
+      if (result.status === 'unconfigured') {
+        toast.push('Supabase 未配置，使用示例数据', 'info');
+      }
+      if (mode === 'sign-up') {
+        toast.push('账号已创建');
+      }
+      onLogin();
+    } catch (err) {
+      console.warn('Auth failed:', err);
+      toast.push(mode === 'sign-in' ? '登录失败，请检查邮箱和密码' : '注册失败，请稍后再试', 'danger');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col px-7 pt-20 pb-10 relative overflow-hidden">
       <div className="absolute -top-40 -right-20 w-80 h-80 rounded-full kk-brand opacity-[0.12] blur-3xl" style={{ backgroundColor: '#7B61FF' }} />
@@ -251,26 +285,36 @@ function Login({ onLogin }) {
           <input
             type="email"
             placeholder="邮箱"
-            defaultValue="serena@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             className="w-full bg-white border border-[#E5E7EB] rounded-2xl px-5 py-4 text-[15px] focus:outline-none focus:kk-border-brand focus:ring-4 focus:ring-[#7B61FF]/10 transition"
           />
           <input
             type="password"
             placeholder="密码"
-            defaultValue="••••••••"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
             className="w-full bg-white border border-[#E5E7EB] rounded-2xl px-5 py-4 text-[15px] focus:outline-none focus:kk-border-brand focus:ring-4 focus:ring-[#7B61FF]/10 transition"
           />
         </div>
 
         <button
-          onClick={onLogin}
+          onClick={submit}
+          disabled={loading}
           className="w-full kk-brand text-white rounded-2xl py-4 font-semibold text-[15px] flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-[0_8px_24px_rgba(123,97,255,0.3)]" style={{ backgroundColor: '#7B61FF' }}
         >
-          开始使用 <ArrowRight className="w-4 h-4" />
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+          {mode === 'sign-in' ? '开始使用' : '注册账号'} <ArrowRight className="w-4 h-4" />
         </button>
 
         <div className="text-center mt-6 text-[13px] text-[#6B7280]">
-          还没有账号？<span className="kk-text-brand font-semibold">注册</span>
+          {mode === 'sign-in' ? '还没有账号？' : '已经有账号？'}
+          <button
+            onClick={() => setMode(mode === 'sign-in' ? 'sign-up' : 'sign-in')}
+            className="kk-text-brand font-semibold"
+          >
+            {mode === 'sign-in' ? '注册' : '登录'}
+          </button>
         </div>
       </div>
     </div>
@@ -1373,7 +1417,7 @@ function ReminderRow({
   );
 }
 
-function ReminderSettings({ onBack, habits, setHabits }) {
+function ReminderSettings({ onBack, habits, updateHabit }) {
   const [dailyOn, setDailyOn] = useState(true);
   const [dailyTime, setDailyTime] = useState('20:00');
   const [streakOn, setStreakOn] = useState(true);
@@ -1384,7 +1428,7 @@ function ReminderSettings({ onBack, habits, setHabits }) {
   const [encTime, setEncTime] = useState('09:00');
   const [weeklyOn, setWeeklyOn] = useState(false);
 
-  const update = (id, patch) => setHabits(hs => hs.map(h => h.id === id ? { ...h, ...patch } : h));
+  const update = (id, patch) => updateHabit(id, patch);
 
   return (
     <div className="px-5 pt-14 pb-32">
@@ -1584,18 +1628,68 @@ function AppInner() {
   const [goals, setGoals] = useState(initialGoals);
   const [habits, setHabits] = useState(initialHabits);
   const [selectedGoalId, setSelectedGoalId] = useState(null);
+  const [dataSource, setDataSource] = useState<'mock' | 'supabase'>('mock');
   const toast = useToast();
 
   const toggleGoalTask = (goalId, dayIdx) => {
+    const goal = goals.find(g => g.id === goalId);
+    const day = goal?.days?.[dayIdx];
+    const nextCompleted = !day?.is_completed;
     setGoals(gs => gs.map(g => g.id !== goalId ? g : {
       ...g, days: g.days.map((d, i) => i !== dayIdx ? d : { ...d, is_completed: !d.is_completed })
     }));
+    if (dataSource === 'supabase' && day) {
+      updateGoalTaskCompletion(goalId, day.day_number, nextCompleted).catch((err) => {
+        console.warn('Failed to update goal task:', err);
+        toast.push('同步失败，稍后再试', 'danger');
+      });
+    }
   };
   const toggleHabitCheckin = (habitId, dayIdx) => {
+    const habit = habits.find(h => h.id === habitId);
+    const checkin = habit?.checkins?.[dayIdx];
+    const nextCompleted = !checkin?.is_completed;
     setHabits(hs => hs.map(h => h.id !== habitId ? h : {
       ...h, checkins: h.checkins.map((c, i) => i !== dayIdx ? c : { ...c, is_completed: !c.is_completed })
     }));
+    if (dataSource === 'supabase' && checkin) {
+      updateHabitCheckinCompletion(habitId, checkin.day_number, nextCompleted).catch((err) => {
+        console.warn('Failed to update habit checkin:', err);
+        toast.push('同步失败，稍后再试', 'danger');
+      });
+    }
   };
+
+  const updateHabitReminderLocal = (id, patch) => {
+    setHabits(hs => hs.map(h => h.id === id ? { ...h, ...patch } : h));
+    if (dataSource === 'supabase') {
+      updateHabitReminder(id, patch).catch((err) => {
+        console.warn('Failed to update habit reminder:', err);
+        toast.push('提醒同步失败', 'danger');
+      });
+    }
+  };
+
+  const syncDailyData = (cancelledRef?: { current: boolean }) =>
+    loadDailyData()
+      .then((result) => {
+        if (cancelledRef?.current || result.status !== 'loaded') return;
+        setGoals(result.goals.length ? result.goals : initialGoals);
+        setHabits(result.habits.length ? result.habits : initialHabits);
+        setDataSource('supabase');
+      })
+      .catch((err) => {
+        console.warn('Supabase load failed, using local demo data:', err);
+        toast.push('Supabase 暂不可用，已显示示例数据', 'info');
+      });
+
+  useEffect(() => {
+    const cancelledRef = { current: false };
+    syncDailyData(cancelledRef);
+    return () => {
+      cancelledRef.current = true;
+    };
+  }, []);
 
 
   // Register service worker (PWA) and detect iOS standalone mode
@@ -1711,7 +1805,7 @@ function AppInner() {
         className="max-w-[440px] mx-auto kk-page min-h-screen relative shadow-[0_0_60px_rgba(17,24,39,0.06)]"
         style={{ backgroundColor: '#DBEAFE' }}
       >
-        {page === 'login' && <Login onLogin={() => setPage('dashboard')} />}
+        {page === 'login' && <Login onLogin={() => { syncDailyData(); setPage('dashboard'); }} />}
         {page === 'dashboard' && (
           <Dashboard
             goals={goals} habits={habits}
@@ -1747,13 +1841,17 @@ function AppInner() {
         {page === 'calendar' && <CalendarPage goals={goals} habits={habits} />}
         {page === 'profile' && (
           <Profile
-            onLogout={() => setPage('login')}
+            onLogout={() => {
+              signOut().catch((err) => console.warn('Sign out failed:', err));
+              setPage('login');
+              setDataSource('mock');
+            }}
             goals={goals} habits={habits}
             onNavReminders={() => setPage('reminders')}
           />
         )}
         {page === 'reminders' && (
-          <ReminderSettings onBack={() => setPage('profile')} habits={habits} setHabits={setHabits} />
+          <ReminderSettings onBack={() => setPage('profile')} habits={habits} updateHabit={updateHabitReminderLocal} />
         )}
 
         {page !== 'login' && page !== 'create' && <BottomNav page={page} onNav={setPage} />}
