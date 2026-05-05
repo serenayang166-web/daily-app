@@ -537,6 +537,7 @@ function CreateWizard({ onClose, onDone }) {
   });
   const [generating, setGenerating] = useState(false);
   const [generated, setGenerated] = useState(null);
+  const toast = useToast();
 
   const isGoal = kind === 'goal';
   const totalSteps = isGoal ? 5 : 4;
@@ -544,26 +545,31 @@ function CreateWizard({ onClose, onDone }) {
   const goNext = () => setStep(s => s + 1);
   const goBack = () => step === 0 ? onClose() : setStep(s => s - 1);
 
-  const generate = () => {
+  const generate = async () => {
     setGenerating(true);
-    setTimeout(() => {
-      setGenerated({
-        days: Array.from({ length: 7 }, (_, i) => ({
-          day_number: i + 1,
-          title: isGoal ? [
-            '诊断 + 制定计划', '基础概念学习', '核心方法练习',
-            '案例分析一', '案例分析二', '复盘总结', '阶段考核'
-          ][i] : [
-            '环境准备', '基础动作', '增加强度', '坚持节奏',
-            '回顾调整', '重新出发', '巩固习惯'
-          ][i],
-          tasks: ['任务一', '任务二', '任务三'],
-          time: data.dailyTime,
-          encouragement: '今天先打好基础。'
-        }))
+    try {
+      const response = await fetch('/api/generate-plan', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'create',
+          kind,
+          title: data.title,
+          description: data.description,
+          current: data.current,
+          endDate: isGoal ? data.endDate : fmtFull(addDays(today, 21)),
+          dailyTime: data.dailyTime,
+        }),
       });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || '生成失败');
+      setGenerated(payload.plan);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '生成失败';
+      toast.push(message, 'danger');
+    } finally {
       setGenerating(false);
-    }, 1800);
+    }
   };
 
   // ──── Render
@@ -762,7 +768,7 @@ function CreateWizard({ onClose, onDone }) {
                       ))}
                     </ul>
                     <div className="text-[11px] text-[#6B7280] mt-2 flex items-center gap-1">
-                      <Clock className="w-3 h-3" /> {d.time} 分钟
+                      <Clock className="w-3 h-3" /> {d.estimated_time} 分钟
                     </div>
                   </div>
                 </div>
@@ -1677,6 +1683,47 @@ function AppInner() {
     }
   };
 
+  const adjustGoalPlan = async (goal) => {
+    toast.push('AI 重新调整中…', 'info');
+    try {
+      const response = await fetch('/api/generate-plan', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'adjust',
+          kind: 'goal',
+          title: goal.title,
+          description: goal.description,
+          current: `当前是第 ${goal.currentDay} 天，已完成 ${goal.days.filter(d => d.is_completed).length} 天。`,
+          endDate: fmtFull(goal.endDate),
+          dailyTime: goal.dailyTime,
+          existingPlan: goal.days,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'AI 重新调整失败');
+      setGoals(gs => gs.map(g => g.id !== goal.id ? g : {
+        ...g,
+        days: payload.plan.days.map((day, index) => ({
+          day_number: day.day_number,
+          date: fmtFull(addDays(today, index)),
+          title: day.title,
+          tasks: day.tasks,
+          estimated_time: day.estimated_time,
+          encouragement: day.encouragement,
+          is_completed: false,
+          note: '',
+        })),
+        totalDays: payload.plan.days.length,
+        currentDay: 1,
+      }));
+      toast.push('计划已重新调整');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'AI 重新调整失败';
+      toast.push(message, 'danger');
+    }
+  };
+
   const syncDailyData = (cancelledRef?: { current: boolean }) =>
     loadDailyData()
       .then((result) => {
@@ -1833,7 +1880,7 @@ function AppInner() {
           <GoalDetail
             goal={selectedGoal}
             onBack={() => setPage('dashboard')}
-            onAdjust={() => toast.push('AI 重新调整中…', 'info')}
+            onAdjust={() => adjustGoalPlan(selectedGoal)}
             toggleGoalTask={toggleGoalTask}
           />
         )}
