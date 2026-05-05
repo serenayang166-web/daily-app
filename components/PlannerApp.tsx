@@ -337,7 +337,10 @@ function Login({ onLogin }) {
 // ═══════════════════════════════════════════════════════════════════
 // Dashboard
 // ═══════════════════════════════════════════════════════════════════
-function Dashboard({ goals, habits, onOpenGoal, onOpenCheckin, onCreate, toggleGoalTask, toggleHabitCheckin }) {
+function Dashboard({ goals, habits, onOpenGoal, onOpenCheckin, onCreate, toggleGoalTask, toggleHabitCheckin, onSaveHabit, onDeleteHabit }) {
+  const [editingHabit, setEditingHabit] = useState(null);
+  const [habitTitle, setHabitTitle] = useState('');
+
   // Today's aggregated tasks
   const todayTasks = [];
   goals.forEach(g => {
@@ -362,13 +365,19 @@ function Dashboard({ goals, habits, onOpenGoal, onOpenCheckin, onCreate, toggleG
   const todayPct = totalToday ? Math.round((doneToday / totalToday) * 100) : 0;
 
   // Primary goal countdown
-  const primaryGoal = goals.reduce((a, b) =>
-    (b.totalDays - b.currentDay) < (a.totalDays - a.currentDay) ? b : a
-  );
+  const primaryGoal = goals.length
+    ? goals.reduce((a, b) => (b.totalDays - b.currentDay) < (a.totalDays - a.currentDay) ? b : a)
+    : {
+        id: '',
+        title: '暂无倒数日目标',
+        icon: Target,
+        currentDay: 1,
+        totalDays: 1,
+      };
   const remainingDays = primaryGoal.totalDays - primaryGoal.currentDay + 1;
   const goalPct = Math.round((primaryGoal.currentDay / primaryGoal.totalDays) * 100);
 
-  const totalStreak = Math.max(...habits.map(h => h.streak));
+  const totalStreak = habits.length ? Math.max(...habits.map(h => h.streak)) : 0;
 
   return (
     <div className="px-5 pt-14 pb-32">
@@ -388,7 +397,7 @@ function Dashboard({ goals, habits, onOpenGoal, onOpenCheckin, onCreate, toggleG
       </div>
 
       {/* Primary goal card */}
-      <Card className="p-4 mt-5 mb-6" onClick={() => onOpenGoal(primaryGoal.id)}>
+      <Card className="p-4 mt-5 mb-6" onClick={() => primaryGoal.id ? onOpenGoal(primaryGoal.id) : onCreate()}>
         <div className="flex items-center gap-3 mb-3">
           <div className="w-10 h-10 rounded-xl kk-brand-soft flex items-center justify-center" style={{ backgroundColor: '#F3F0FF' }}>
             <primaryGoal.icon className="w-5 h-5 kk-text-brand" strokeWidth={2} />
@@ -407,6 +416,39 @@ function Dashboard({ goals, habits, onOpenGoal, onOpenCheckin, onCreate, toggleG
           <div className="text-[12px] text-[#6B7280] font-medium tabular-nums">{goalPct}%</div>
         </div>
       </Card>
+
+      <div className="mb-6">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-[15px] font-bold text-[#111827]">倒数日目标</h2>
+          <button onClick={onCreate} className="text-[12px] kk-text-brand font-semibold flex items-center gap-1">
+            <Plus className="w-3 h-3" /> 新建目标
+          </button>
+        </div>
+        <div className="space-y-2">
+          {goals.map(g => {
+            const Icon = g.icon;
+            const daysLeft = g.totalDays - g.currentDay + 1;
+            const progress = Math.round((g.currentDay / g.totalDays) * 100);
+            return (
+              <Card key={g.id} className="p-3.5" onClick={() => onOpenGoal(g.id)}>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg kk-brand-soft flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#F3F0FF' }}>
+                    <Icon className="w-4 h-4 kk-text-brand" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-[13px] text-[#111827] truncate">{g.title}</div>
+                    <div className="text-[11px] text-[#6B7280]">Day {g.currentDay}/{g.totalDays} · {progress}%</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-bold kk-text-brand tabular-nums">{daysLeft}</div>
+                    <div className="text-[10px] text-[#6B7280]">天</div>
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
 
       {/* Today's tasks — VISUAL CENTER */}
       <div className="mb-6">
@@ -472,7 +514,7 @@ function Dashboard({ goals, habits, onOpenGoal, onOpenCheckin, onCreate, toggleG
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-[15px] font-bold text-[#111827]">习惯</h2>
           <button onClick={onCreate} className="text-[12px] kk-text-brand font-semibold flex items-center gap-1">
-            <Plus className="w-3 h-3" /> 新建
+            <Plus className="w-3 h-3" /> 新建习惯
           </button>
         </div>
         <div className="grid grid-cols-1 gap-2.5">
@@ -491,6 +533,21 @@ function Dashboard({ goals, habits, onOpenGoal, onOpenCheckin, onCreate, toggleG
                       <Flame className="w-3 h-3 kk-text-danger" /> 连续 {h.streak} 天 · Day {h.currentDay}/21
                     </div>
                   </div>
+                  <button
+                    onClick={() => {
+                      setEditingHabit(h);
+                      setHabitTitle(h.title);
+                    }}
+                    className="w-8 h-8 rounded-full bg-[#F3F4F6] flex items-center justify-center"
+                  >
+                    <Pencil className="w-3.5 h-3.5 text-[#6B7280]" />
+                  </button>
+                  <button
+                    onClick={() => onDeleteHabit(h.id)}
+                    className="w-8 h-8 rounded-full bg-[#FEE2E2] flex items-center justify-center"
+                  >
+                    <X className="w-3.5 h-3.5 kk-text-danger" />
+                  </button>
                 </div>
                 <div className="grid gap-[3px]" style={{ gridTemplateColumns: 'repeat(21, 1fr)' }}>
                   {h.checkins.map((ci, i) => (
@@ -515,6 +572,34 @@ function Dashboard({ goals, habits, onOpenGoal, onOpenCheckin, onCreate, toggleG
           <Stat icon={Target} label="进行中" value={`${goals.length + habits.length}`} color="#22C55E" />
         </div>
       </Card>
+
+      {editingHabit && (
+        <div className="fixed inset-0 bg-black/30 z-[120] flex items-end justify-center">
+          <div className="bg-white w-full max-w-[440px] rounded-t-3xl p-5 animate-slide-up">
+            <div className="flex items-center justify-between mb-4">
+              <div className="font-bold text-[18px] text-[#111827]">编辑习惯</div>
+              <button onClick={() => setEditingHabit(null)} className="w-9 h-9 rounded-full bg-[#F3F4F6] flex items-center justify-center">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <input
+              value={habitTitle}
+              onChange={(e) => setHabitTitle(e.target.value)}
+              className="w-full bg-white border border-[#E5E7EB] rounded-2xl px-4 py-3 mb-4 text-[16px] focus:outline-none focus:kk-border-brand"
+            />
+            <button
+              onClick={() => {
+                onSaveHabit(editingHabit.id, { title: habitTitle });
+                setEditingHabit(null);
+              }}
+              className="w-full kk-brand text-white rounded-2xl py-4 font-semibold"
+              style={{ backgroundColor: '#7B61FF' }}
+            >
+              保存修改
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1910,8 +1995,8 @@ function AppInner() {
     loadDailyData()
       .then((result) => {
         if (cancelledRef?.current || result.status !== 'loaded') return;
-        setGoals(result.goals.length ? result.goals : initialGoals);
-        setHabits(result.habits.length ? result.habits : initialHabits);
+        setGoals(result.goals);
+        setHabits(result.habits);
         setDataSource('supabase');
       })
       .catch((err) => {
@@ -2050,6 +2135,8 @@ function AppInner() {
             onCreate={() => setPage('create')}
             toggleGoalTask={(gid, di) => { toggleGoalTask(gid, di); }}
             toggleHabitCheckin={(hid, di) => { toggleHabitCheckin(hid, di); }}
+            onSaveHabit={saveHabitEdit}
+            onDeleteHabit={removeHabit}
           />
         )}
         {page === 'create' && (
