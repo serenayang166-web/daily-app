@@ -5,7 +5,7 @@ import {
   Home, Calendar as CalIcon, Plus, User, Check, ChevronRight, ChevronLeft,
   Target, Sparkles, Flame, Clock, ArrowRight, Trophy, Repeat,
   Pencil, X, Loader2, RotateCw, MessageCircle, BookOpen, Dumbbell,
-  TrendingUp, Bell, Settings, ArrowLeft, Smile
+  TrendingUp, Bell, Settings, ArrowLeft, Smile, type LucideIcon
 } from 'lucide-react';
 
 // ═══════════════════════════════════════════════════════════════════
@@ -106,12 +106,15 @@ const initialHabits = [
 // ═══════════════════════════════════════════════════════════════════
 // Toast system
 // ═══════════════════════════════════════════════════════════════════
-const ToastCtx = createContext({ push: () => {} });
+type ToastKind = 'success' | 'danger' | 'info';
+type ToastItem = { id: number; msg: string; kind: ToastKind };
+
+const ToastCtx = createContext<{ push: (msg: string, kind?: ToastKind) => void }>({ push: () => {} });
 const useToast = () => useContext(ToastCtx);
 
-function ToastProvider({ children }) {
-  const [toasts, setToasts] = useState([]);
-  const push = (msg, kind = 'success') => {
+function ToastProvider({ children }: { children: React.ReactNode }) {
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const push = (msg: string, kind: ToastKind = 'success') => {
     const id = Math.random();
     setToasts(t => [...t, { id, msg, kind }]);
     setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 2200);
@@ -182,10 +185,21 @@ function Skeleton({ className = '' }) {
   return <div className={`bg-[#F3F4F6] rounded-xl animate-pulse-soft ${className}`} />;
 }
 
-function Card({ children, className = '', onClick }) {
+function Card({
+  children,
+  className = '',
+  onClick,
+  style,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  onClick?: () => void;
+  style?: React.CSSProperties;
+}) {
   return (
     <div
       onClick={onClick}
+      style={style}
       className={`bg-white rounded-2xl border border-[#F3F4F6] shadow-[0_2px_8px_rgba(17,24,39,0.04)] ${onClick ? 'cursor-pointer active:scale-[0.99] transition' : ''} ${className}`}
     >
       {children}
@@ -725,7 +739,23 @@ function CreateWizard({ onClose, onDone }) {
   );
 }
 
-function WizardStep({ label, question, hint, children, onContinue, disabled, continueLabel }) {
+function WizardStep({
+  label,
+  question,
+  hint,
+  children,
+  onContinue,
+  disabled = false,
+  continueLabel,
+}: {
+  label: React.ReactNode;
+  question: React.ReactNode;
+  hint: React.ReactNode;
+  children: React.ReactNode;
+  onContinue: () => void;
+  disabled?: boolean;
+  continueLabel?: React.ReactNode;
+}) {
   return (
     <div className="animate-slide-up flex flex-col h-full">
       <div className="inline-flex items-center gap-1.5 px-3 py-1.5 kk-brand-soft rounded-full text-[11px] font-bold kk-text-brand mb-4 self-start" style={{ backgroundColor: '#F3F0FF' }}>
@@ -1091,7 +1121,7 @@ function Celebration({ totalStreak, onClose }) {
 // ═══════════════════════════════════════════════════════════════════
 function CalendarPage({ goals, habits }) {
   // Build daily completion map across last 12 weeks
-  const dayMap = {};
+  const dayMap: Record<string, { total: number; done: number }> = {};
   goals.forEach(g => g.days.forEach(d => {
     if (!dayMap[d.date]) dayMap[d.date] = { total: 0, done: 0 };
     dayMap[d.date].total += 1;
@@ -1293,7 +1323,7 @@ function Profile({ onLogout, goals, habits, onNavReminders }) {
   );
 }
 
-function Toggle({ on, onChange }) {
+function Toggle({ on, onChange }: { on: boolean; onChange: (value: boolean) => void }) {
   return (
     <button
       onClick={() => onChange(!on)}
@@ -1304,7 +1334,23 @@ function Toggle({ on, onChange }) {
   );
 }
 
-function ReminderRow({ icon: Icon, title, desc, on, setOn, badge, children }) {
+function ReminderRow({
+  icon: Icon,
+  title,
+  desc,
+  on,
+  setOn,
+  badge,
+  children,
+}: {
+  icon: LucideIcon;
+  title: string;
+  desc: string;
+  on: boolean;
+  setOn: (value: boolean) => void;
+  badge?: string;
+  children?: React.ReactNode;
+}) {
   return (
     <Card className="overflow-hidden">
       <div className="p-4 flex items-start gap-3">
