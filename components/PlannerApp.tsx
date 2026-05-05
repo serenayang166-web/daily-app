@@ -247,6 +247,12 @@ function Login({ onLogin }) {
         : await signUpWithPassword(email, password);
       if (result.status === 'unconfigured') {
         toast.push('Supabase 未配置，使用示例数据', 'info');
+        onLogin();
+        return;
+      }
+      if (result.status === 'confirmation-required') {
+        toast.push('请先去邮箱确认账号', 'info');
+        return;
       }
       if (mode === 'sign-up') {
         toast.push('账号已创建');
@@ -254,7 +260,8 @@ function Login({ onLogin }) {
       onLogin();
     } catch (err) {
       console.warn('Auth failed:', err);
-      toast.push(mode === 'sign-in' ? '登录失败，请检查邮箱和密码' : '注册失败，请稍后再试', 'danger');
+      const message = err instanceof Error ? err.message : '请稍后再试';
+      toast.push(message, 'danger');
     } finally {
       setLoading(false);
     }

@@ -24,8 +24,9 @@ export async function signInWithPassword(email: string, password: string) {
 
 export async function signUpWithPassword(email: string, password: string) {
   if (!supabase) return { status: 'unconfigured' as const };
-  const { error } = await supabase.auth.signUp({ email, password });
+  const { data, error } = await supabase.auth.signUp({ email, password });
   if (error) throw error;
+  if (!data.session) return { status: 'confirmation-required' as const };
   return { status: 'signed-up' as const };
 }
 
