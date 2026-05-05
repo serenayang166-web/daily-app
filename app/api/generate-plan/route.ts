@@ -7,6 +7,20 @@ export const runtime = 'nodejs';
 const ajv = new Ajv({ allErrors: true });
 const validatePlan = ajv.compile(planSchema);
 
+const stripClaudeUnsupportedKeywords = (schema: any): any => {
+  if (Array.isArray(schema)) return schema.map(stripClaudeUnsupportedKeywords);
+  if (!schema || typeof schema !== 'object') return schema;
+
+  const blocked = new Set(['maxItems', 'minItems', 'minLength', 'minimum', 'maximum']);
+  return Object.fromEntries(
+    Object.entries(schema)
+      .filter(([key]) => !blocked.has(key))
+      .map(([key, value]) => [key, stripClaudeUnsupportedKeywords(value)]),
+  );
+};
+
+const claudePlanSchema = stripClaudeUnsupportedKeywords(planSchema);
+
 const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
 const modelAliases: Record<string, string> = {
   'claude-sonnet-4-5': 'claude-sonnet-4-5-20250929',
@@ -79,7 +93,7 @@ export async function POST(request: Request) {
       output_config: {
         format: {
           type: 'json_schema',
-          schema: planSchema,
+          schema: claudePlanSchema,
         },
       },
     }),
