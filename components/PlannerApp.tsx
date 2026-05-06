@@ -19,6 +19,7 @@ import {
   updateHabitCheckinCompletion,
   updateHabitReminder,
 } from '@/lib/daily-data';
+import { enablePush } from '@/lib/push';
 import { signInWithPassword, signOut, signUpWithPassword } from '@/lib/supabase';
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1640,8 +1641,22 @@ function ReminderSettings({ onBack, habits, updateHabit }) {
   const [encOn, setEncOn] = useState(true);
   const [encTime, setEncTime] = useState('09:00');
   const [weeklyOn, setWeeklyOn] = useState(false);
+  const [pushLoading, setPushLoading] = useState(false);
+  const toast = useToast();
 
   const update = (id, patch) => updateHabit(id, patch);
+  const handleEnablePush = async () => {
+    setPushLoading(true);
+    try {
+      await enablePush();
+      toast.push('提醒已开启');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '开启提醒失败';
+      toast.push(message, 'danger');
+    } finally {
+      setPushLoading(false);
+    }
+  };
 
   return (
     <div className="px-5 pt-14 pb-32">
@@ -1656,6 +1671,15 @@ function ReminderSettings({ onBack, habits, updateHabit }) {
       </div>
 
       <div className="text-[11px] uppercase tracking-[0.1em] text-[#6B7280] font-bold mb-3">核心提醒</div>
+      <button
+        onClick={handleEnablePush}
+        disabled={pushLoading}
+        className="w-full kk-brand text-white rounded-2xl py-4 font-semibold text-[14px] active:scale-[0.99] transition shadow-[0_8px_20px_rgba(123,97,255,0.25)] flex items-center justify-center gap-2 mb-4 disabled:opacity-60"
+        style={{ backgroundColor: '#7B61FF' }}
+      >
+        {pushLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+        开启提醒
+      </button>
       <div className="space-y-2.5 mb-6">
         <ReminderRow icon={Bell} title="每日打卡提醒" desc="到点提醒今天还有几件事没完成。" on={dailyOn} setOn={setDailyOn}>
           <div className="flex items-center justify-between">

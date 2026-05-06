@@ -291,3 +291,40 @@ export async function deleteHabit(habitId: string) {
   const { error } = await supabase.from('habits').delete().eq('id', habitId);
   if (error) throw error;
 }
+
+export async function savePushSubscription(subscription: PushSubscription) {
+  if (!supabase) throw new Error('Supabase is not configured.');
+
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError) throw userError;
+  const userId = userData.user?.id;
+  if (!userId) throw new Error('Please sign in before enabling reminders.');
+
+  const json = subscription.toJSON();
+  const { error } = await supabase.from('push_subscriptions').upsert(
+    {
+      user_id: userId,
+      endpoint: json.endpoint,
+      p256dh: json.keys?.p256dh,
+      auth: json.keys?.auth,
+      user_agent: navigator.userAgent,
+    },
+    { onConflict: 'user_id,endpoint' },
+  );
+  if (error) throw error;
+
+  const { error: settingsError } = await supabase.from('reminder_settings').upsert(
+    {
+      user_id: userId,
+      daily_enabled: true,
+      daily_time: '20:00',
+      streak_enabled: true,
+      streak_cutoff: '22:00',
+      behind_enabled: true,
+      behind_threshold_days: 3,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Australia/Sydney',
+    },
+    { onConflict: 'user_id' },
+  );
+  if (settingsError) throw settingsError;
+}
